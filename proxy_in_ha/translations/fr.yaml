@@ -1,0 +1,7 @@
+configuration:
+  services:
+    name: Services
+    description: Liste des services locaux à proxifier via Home Assistant
+  check_interval:
+    name: Intervalle de vérification
+    description: Intervalle en secondes entre les vérifications de santé de chaque service (5-300)

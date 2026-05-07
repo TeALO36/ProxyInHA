@@ -1,0 +1,34 @@
+name: "ProxyInHA"
+version: "1.0.0"
+slug: "proxy_in_ha"
+description: >-
+  Reverse proxy pour accéder à vos services locaux via Home Assistant
+  sans ouvrir de ports. Profitez du mTLS de HA pour sécuriser l'accès
+  à Portainer, Grafana, Pi-hole et tous vos autres services.
+url: "https://github.com/TeALO36/ProxyInHA"
+arch:
+  - amd64
+  - aarch64
+startup: services
+boot: auto
+init: false
+host_network: true
+ingress: true
+ingress_port: 8099
+ingress_entry: /
+panel_icon: "mdi:shield-network"
+panel_title: "ProxyInHA"
+panel_admin: true
+map:
+  - type: share
+    read_only: false
+options:
+  services: []
+  check_interval: 30
+schema:
+  services:
+    - name: str
+      url: url
+      icon: "str?"
+      enabled: bool
+  check_interval: "int(5,300)"

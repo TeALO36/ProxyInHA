@@ -1,0 +1,7 @@
+configuration:
+  services:
+    name: Services
+    description: List of local services to proxy through Home Assistant
+  check_interval:
+    name: Health Check Interval
+    description: Interval in seconds between health checks for each service (5-300)

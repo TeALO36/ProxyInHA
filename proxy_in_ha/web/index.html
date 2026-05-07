@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProxyInHA — Dashboard</title>
+    <meta name="description" content="Gérez vos services locaux via le reverse proxy Home Assistant">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- HEADER                                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <header id="app-header">
+        <div class="header-content">
+            <div class="header-left">
+                <div class="logo-icon">
+                    <span class="mdi mdi-shield-network"></span>
+                </div>
+                <div class="header-text">
+                    <h1>ProxyInHA</h1>
+                    <p class="subtitle">Reverse Proxy pour Home Assistant</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="stats-pill" id="stats-pill">
+                    <span class="mdi mdi-server-network"></span>
+                    <span id="stats-count">0 services</span>
+                </div>
+                <button class="btn-icon" id="btn-refresh" title="Rafraîchir">
+                    <span class="mdi mdi-refresh"></span>
+                </button>
+                <button class="btn-icon" id="btn-reload-nginx" title="Recharger Nginx">
+                    <span class="mdi mdi-reload"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- MAIN CONTENT                                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <main id="app-main">
+        <!-- Add Service Card -->
+        <section class="add-service-section" id="add-section">
+            <div class="section-header" id="toggle-add-form">
+                <h2><span class="mdi mdi-plus-circle"></span> Ajouter un service</h2>
+                <span class="mdi mdi-chevron-down toggle-chevron" id="chevron-add"></span>
+            </div>
+            <form id="add-service-form" class="add-form collapsed">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="svc-name">
+                            <span class="mdi mdi-tag"></span> Nom du service
+                        </label>
+                        <input type="text" id="svc-name" placeholder="Ex: Portainer" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="svc-url">
+                            <span class="mdi mdi-link-variant"></span> URL du service
+                        </label>
+                        <input type="url" id="svc-url" placeholder="Ex: http://192.168.0.100:9000" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="svc-icon">
+                            <span class="mdi mdi-emoticon"></span> Icône MDI (optionnel)
+                        </label>
+                        <input type="text" id="svc-icon" placeholder="Ex: mdi:docker" value="mdi:server-network">
+                    </div>
+                    <div class="form-group form-group-checkbox">
+                        <label for="svc-enabled">
+                            <span class="mdi mdi-power"></span> Activé
+                        </label>
+                        <input type="checkbox" id="svc-enabled" checked>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="btn-add-service">
+                        <span class="mdi mdi-plus"></span> Ajouter
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Services Grid -->
+        <section class="services-section">
+            <div class="section-header">
+                <h2><span class="mdi mdi-view-grid"></span> Services configurés</h2>
+            </div>
+
+            <!-- Loading state -->
+            <div class="loading-state" id="loading-state">
+                <div class="spinner"></div>
+                <p>Chargement des services...</p>
+            </div>
+
+            <!-- Empty state -->
+            <div class="empty-state hidden" id="empty-state">
+                <span class="mdi mdi-server-off"></span>
+                <h3>Aucun service configuré</h3>
+                <p>Ajoutez votre premier service en utilisant le formulaire ci-dessus.</p>
+            </div>
+
+            <!-- Services grid -->
+            <div class="services-grid hidden" id="services-grid">
+                <!-- Cards injected by JS -->
+            </div>
+        </section>
+    </main>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- EDIT MODAL                                                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay hidden" id="edit-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><span class="mdi mdi-pencil"></span> Modifier le service</h3>
+                <button class="btn-icon" id="btn-close-modal">
+                    <span class="mdi mdi-close"></span>
+                </button>
+            </div>
+            <form id="edit-service-form">
+                <input type="hidden" id="edit-id">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit-name">
+                            <span class="mdi mdi-tag"></span> Nom
+                        </label>
+                        <input type="text" id="edit-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-url">
+                            <span class="mdi mdi-link-variant"></span> URL
+                        </label>
+                        <input type="url" id="edit-url" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-icon">
+                            <span class="mdi mdi-emoticon"></span> Icône MDI
+                        </label>
+                        <input type="text" id="edit-icon">
+                    </div>
+                    <div class="form-group form-group-checkbox">
+                        <label for="edit-enabled">
+                            <span class="mdi mdi-power"></span> Activé
+                        </label>
+                        <input type="checkbox" id="edit-enabled">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" id="btn-cancel-edit">Annuler</button>
+                    <button type="submit" class="btn btn-primary">
+                        <span class="mdi mdi-check"></span> Sauvegarder
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TOAST NOTIFICATIONS                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
