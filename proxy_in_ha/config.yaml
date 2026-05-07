@@ -1,5 +1,5 @@
 name: "ProxyInHA"
-version: "1.2.0"
+version: "1.2.1"
 slug: "proxy_in_ha"
 description: >-
   Reverse proxy sécurisé pour Home Assistant. Accédez à vos services locaux
