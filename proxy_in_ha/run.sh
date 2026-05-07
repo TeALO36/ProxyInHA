@@ -138,33 +138,41 @@ setup_active_certs() {
     local caddy_domain="${CADDY_DOMAIN:-${domain}}"
     local used_mode="auto"
 
-    # ── PRIORITÉ 1 : CA mTLS existante (/root/mtls-ca/ca.crt)
-    # Si elle existe, l'utiliser comme CA de vérification client
-    # → le même cert client que HA fonctionne pour mTLS OpenClaw
-    local mtls_ca_found=false
-    if [ -f "/root/mtls-ca/ca.crt" ]; then
+    # ── PRIORITÉ 1 : Certs copiés via l'outil (dans /ssl/proxyinha/)
+    # /ssl/ est mappé depuis /mnt/data/supervisor/ssl/ par HA
+    if [ -f "/ssl/proxyinha/ca.crt" ]; then
+        cp "/ssl/proxyinha/ca.crt" "${NGINX_CERTS}/ca.crt"
+        bashio::log.info "CA mTLS depuis /ssl/proxyinha/ca.crt ✓ — même cert client que HA"
+    elif [ -f "/root/mtls-ca/ca.crt" ]; then
         cp "/root/mtls-ca/ca.crt" "${NGINX_CERTS}/ca.crt"
-        bashio::log.info "CA mTLS Caddy (/root/mtls-ca/ca.crt) ✓ — même cert client que HA"
-        mtls_ca_found=true
+        bashio::log.info "CA mTLS depuis /root/mtls-ca/ca.crt ✓"
     fi
 
-    # ── PRIORITÉ 2 : Certs serveur Let's Encrypt Caddy (auto-détection)
-    local caddy_certs
-    caddy_certs=$(find_caddy_certs "${caddy_domain}") || true
-    if [ -n "${caddy_certs}" ]; then
-        local cert_path key_path
-        cert_path="${caddy_certs%%:*}"
-        key_path="${caddy_certs##*:}"
-        cp "${cert_path}" "${NGINX_CERTS}/server.crt"
-        cp "${key_path}"  "${NGINX_CERTS}/server.key"
+    if [ -f "/ssl/proxyinha/server.crt" ] && [ -f "/ssl/proxyinha/server.key" ]; then
+        cp "/ssl/proxyinha/server.crt" "${NGINX_CERTS}/server.crt"
+        cp "/ssl/proxyinha/server.key" "${NGINX_CERTS}/server.key"
         chmod 600 "${NGINX_CERTS}/server.key"
-        bashio::log.info "Cert serveur Let's Encrypt Caddy (${caddy_domain}) ✓"
-        used_mode="caddy"
-    elif [ "${TLS_MODE}" = "caddy" ]; then
-        bashio::log.warning "Mode caddy demandé mais certs non trouvés → auto-génération"
+        bashio::log.info "Cert serveur Let's Encrypt depuis /ssl/proxyinha/ ✓"
+        used_mode="caddy_ssl"
     fi
 
-    # ── PRIORITÉ 3 : Auto-génération si pas de cert serveur encore
+    # ── PRIORITÉ 2 : Certs Caddy dans le volume Docker (si disponible)
+    if [ ! -f "${NGINX_CERTS}/server.crt" ]; then
+        local caddy_certs
+        caddy_certs=$(find_caddy_certs "${caddy_domain}") || true
+        if [ -n "${caddy_certs}" ]; then
+            local cert_path key_path
+            cert_path="${caddy_certs%%:*}"
+            key_path="${caddy_certs##*:}"
+            cp "${cert_path}" "${NGINX_CERTS}/server.crt"
+            cp "${key_path}"  "${NGINX_CERTS}/server.key"
+            chmod 600 "${NGINX_CERTS}/server.key"
+            bashio::log.info "Cert serveur Caddy (${caddy_domain}) ✓"
+            used_mode="caddy"
+        fi
+    fi
+
+    # ── PRIORITÉ 3 : Auto-génération si aucun cert trouvé
     if [ ! -f "${NGINX_CERTS}/server.crt" ]; then
         if [ ! -f "${DATA_CERTS}/server.crt" ] || [ ! -f "${DATA_CERTS}/ca.crt" ]; then
             generate_certs "${domain}"
@@ -174,16 +182,16 @@ setup_active_certs() {
         cp "${DATA_CERTS}/server.crt" "${NGINX_CERTS}/server.crt"
         cp "${DATA_CERTS}/server.key" "${NGINX_CERTS}/server.key"
         chmod 600 "${NGINX_CERTS}/server.key"
-        # N'écraser la CA que si pas déjà définie par /root/mtls-ca
-        if [ "${mtls_ca_found}" = "false" ]; then
+        if [ ! -f "${NGINX_CERTS}/ca.crt" ]; then
             cp "${DATA_CERTS}/ca.crt" "${NGINX_CERTS}/ca.crt"
-            bashio::log.info "CA auto-générée utilisée (cert client .p12 requis)"
+            bashio::log.info "CA auto-générée (cert client .p12 requis)"
         fi
         used_mode="auto"
     fi
 
-    bashio::log.info "Mode TLS effectif : ${used_mode} (CA mTLS partagée: ${mtls_ca_found})"
+    bashio::log.info "Mode TLS effectif : ${used_mode}"
 }
+
 
 
 
