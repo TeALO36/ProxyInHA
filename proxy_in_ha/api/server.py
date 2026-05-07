@@ -1,4 +1,4 @@
-"""ProxyInHA v1.2.1 — Flask serves everything: static files + API"""
+"""ProxyInHA v1.2.4 — Flask serves everything: static files + API"""
 
 import json, os, re, subprocess, uuid, urllib.request, urllib.error
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -240,7 +240,7 @@ def proxy_service(slug, subpath):
 def api_info():
     svcs = load_services()
     return jsonify({
-        "version": "1.2.1",
+        "version": "1.2.4",
         "domain": DOMAIN, "tls_mode": TLS_MODE,
         "total_services": len(svcs),
         "enabled_services": sum(1 for s in svcs if s.get("enabled")),
@@ -338,4 +338,10 @@ def download_ca():
                      mimetype="application/x-x509-ca-cert")
 
 if __name__ == "__main__":
+    # Générer les configs nginx (mTLS inclus) au démarrage
+    import threading, time
+    def _startup_apply():
+        time.sleep(3)  # Attendre que nginx soit prêt
+        apply_all(load_services())
+    threading.Thread(target=_startup_apply, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, debug=False)
