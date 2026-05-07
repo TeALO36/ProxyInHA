@@ -8,18 +8,24 @@ RUN apk add --no-cache \
     py3-flask \
     curl \
     jq \
-    dos2unix
+    dos2unix \
+    openssl
 
 # Create required directories
-RUN mkdir -p /run/nginx /data /var/log/nginx /etc/nginx/conf.d /var/www/html
+RUN mkdir -p /run/nginx \
+             /data \
+             /var/log/nginx \
+             /etc/nginx/conf.d \
+             /etc/nginx/mtls.d \
+             /var/www/html \
+             /etc/nginx/certs
 
-# Remove Alpine default nginx site (causes "Welcome to nginx!" page)
+# Remove Alpine default nginx site
 RUN rm -f /etc/nginx/http.d/default.conf \
     && rm -f /etc/nginx/conf.d/default.conf
 
 # Copy Nginx configuration
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
-COPY nginx/proxy.conf.template /etc/nginx/proxy.conf.template
 
 # Copy web UI
 COPY web/ /var/www/html/

@@ -12,18 +12,14 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- HEADER                                                             -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- HEADER -->
     <header id="app-header">
         <div class="header-content">
             <div class="header-left">
-                <div class="logo-icon">
-                    <span class="mdi mdi-shield-network"></span>
-                </div>
+                <div class="logo-icon"><span class="mdi mdi-shield-network"></span></div>
                 <div class="header-text">
                     <h1>ProxyInHA</h1>
-                    <p class="subtitle">Reverse Proxy pour Home Assistant</p>
+                    <p class="subtitle">Reverse Proxy · mTLS</p>
                 </div>
             </div>
             <div class="header-right">
@@ -31,21 +27,28 @@
                     <span class="mdi mdi-server-network"></span>
                     <span id="stats-count">0 services</span>
                 </div>
-                <button class="btn-icon" id="btn-refresh" title="Rafraîchir">
-                    <span class="mdi mdi-refresh"></span>
-                </button>
-                <button class="btn-icon" id="btn-reload-nginx" title="Recharger Nginx">
-                    <span class="mdi mdi-reload"></span>
-                </button>
+                <div class="cert-status hidden" id="cert-status" title="Certificats TLS configurés">
+                    <span class="mdi mdi-shield-lock"></span>
+                    <span id="cert-domain">mTLS OK</span>
+                </div>
+                <button class="btn-icon" id="btn-refresh" title="Rafraîchir"><span class="mdi mdi-refresh"></span></button>
+                <button class="btn-icon" id="btn-reload-nginx" title="Recharger Nginx"><span class="mdi mdi-reload"></span></button>
             </div>
         </div>
     </header>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- MAIN CONTENT                                                       -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
     <main id="app-main">
-        <!-- Add Service Card -->
+
+        <!-- Alerte certificats manquants -->
+        <div class="alert-banner hidden" id="alert-no-certs">
+            <span class="mdi mdi-alert"></span>
+            <div>
+                <strong>Certificats TLS non configurés</strong>
+                <p>Pour activer l'exposition mTLS, configurez <code>cert_path</code>, <code>cert_key_path</code>, <code>mtls_ca_path</code> et <code>domain</code> dans les options de l'add-on.</p>
+            </div>
+        </div>
+
+        <!-- Add Service -->
         <section class="add-service-section" id="add-section">
             <div class="section-header" id="toggle-add-form">
                 <h2><span class="mdi mdi-plus-circle"></span> Ajouter un service</h2>
@@ -54,32 +57,44 @@
             <form id="add-service-form" class="add-form collapsed">
                 <div class="form-grid">
                     <div class="form-group">
-                        <label for="svc-name">
-                            <span class="mdi mdi-tag"></span> Nom du service
-                        </label>
+                        <label for="svc-name"><span class="mdi mdi-tag"></span> Nom</label>
                         <input type="text" id="svc-name" placeholder="Ex: Portainer" required>
                     </div>
                     <div class="form-group">
-                        <label for="svc-url">
-                            <span class="mdi mdi-link-variant"></span> URL du service
-                        </label>
-                        <input type="url" id="svc-url" placeholder="Ex: http://192.168.0.100:9000" required>
+                        <label for="svc-url"><span class="mdi mdi-link-variant"></span> URL locale</label>
+                        <input type="url" id="svc-url" placeholder="http://192.168.0.100:9000" required>
                     </div>
                     <div class="form-group">
-                        <label for="svc-icon">
-                            <span class="mdi mdi-emoticon"></span> Icône MDI (optionnel)
-                        </label>
-                        <input type="text" id="svc-icon" placeholder="Ex: mdi:docker" value="mdi:server-network">
+                        <label for="svc-icon"><span class="mdi mdi-emoticon"></span> Icône MDI</label>
+                        <input type="text" id="svc-icon" placeholder="mdi:docker" value="mdi:server-network">
                     </div>
                     <div class="form-group form-group-checkbox">
-                        <label for="svc-enabled">
-                            <span class="mdi mdi-power"></span> Activé
-                        </label>
+                        <label for="svc-enabled"><span class="mdi mdi-power"></span> Activé</label>
                         <input type="checkbox" id="svc-enabled" checked>
                     </div>
                 </div>
+
+                <!-- mTLS Section -->
+                <div class="mtls-section" id="mtls-add-section">
+                    <div class="mtls-toggle">
+                        <label class="mtls-label" for="svc-public">
+                            <span class="mdi mdi-shield-lock-outline"></span>
+                            <div>
+                                <span class="mtls-title">Exposer publiquement via mTLS</span>
+                                <span class="mtls-desc">Rend ce service accessible depuis Internet via HTTPS + certificat client</span>
+                            </div>
+                        </label>
+                        <input type="checkbox" id="svc-public" class="toggle-check">
+                    </div>
+                    <div class="mtls-port-group hidden" id="mtls-port-add">
+                        <label for="svc-public-port"><span class="mdi mdi-ethernet-cable"></span> Port public</label>
+                        <input type="number" id="svc-public-port" placeholder="8444" min="1024" max="65535">
+                        <span class="port-hint">À ouvrir sur votre box · Ex: 8444, 8445...</span>
+                    </div>
+                </div>
+
                 <div class="form-actions">
-                    <button type="submit" class="btn btn-primary" id="btn-add-service">
+                    <button type="submit" class="btn btn-primary">
                         <span class="mdi mdi-plus"></span> Ajouter
                     </button>
                 </div>
@@ -91,79 +106,72 @@
             <div class="section-header">
                 <h2><span class="mdi mdi-view-grid"></span> Services configurés</h2>
             </div>
-
-            <!-- Loading state -->
             <div class="loading-state" id="loading-state">
                 <div class="spinner"></div>
-                <p>Chargement des services...</p>
+                <p>Chargement...</p>
             </div>
-
-            <!-- Empty state -->
             <div class="empty-state hidden" id="empty-state">
                 <span class="mdi mdi-server-off"></span>
                 <h3>Aucun service configuré</h3>
-                <p>Ajoutez votre premier service en utilisant le formulaire ci-dessus.</p>
+                <p>Ajoutez votre premier service ci-dessus.</p>
             </div>
-
-            <!-- Services grid -->
-            <div class="services-grid hidden" id="services-grid">
-                <!-- Cards injected by JS -->
-            </div>
+            <div class="services-grid hidden" id="services-grid"></div>
         </section>
     </main>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- EDIT MODAL                                                         -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- Edit Modal -->
     <div class="modal-overlay hidden" id="edit-modal">
         <div class="modal-card">
             <div class="modal-header">
                 <h3><span class="mdi mdi-pencil"></span> Modifier le service</h3>
-                <button class="btn-icon" id="btn-close-modal">
-                    <span class="mdi mdi-close"></span>
-                </button>
+                <button class="btn-icon" id="btn-close-modal"><span class="mdi mdi-close"></span></button>
             </div>
             <form id="edit-service-form">
                 <input type="hidden" id="edit-id">
                 <div class="form-grid">
                     <div class="form-group">
-                        <label for="edit-name">
-                            <span class="mdi mdi-tag"></span> Nom
-                        </label>
+                        <label for="edit-name"><span class="mdi mdi-tag"></span> Nom</label>
                         <input type="text" id="edit-name" required>
                     </div>
                     <div class="form-group">
-                        <label for="edit-url">
-                            <span class="mdi mdi-link-variant"></span> URL
-                        </label>
+                        <label for="edit-url"><span class="mdi mdi-link-variant"></span> URL</label>
                         <input type="url" id="edit-url" required>
                     </div>
                     <div class="form-group">
-                        <label for="edit-icon">
-                            <span class="mdi mdi-emoticon"></span> Icône MDI
-                        </label>
+                        <label for="edit-icon"><span class="mdi mdi-emoticon"></span> Icône MDI</label>
                         <input type="text" id="edit-icon">
                     </div>
                     <div class="form-group form-group-checkbox">
-                        <label for="edit-enabled">
-                            <span class="mdi mdi-power"></span> Activé
-                        </label>
+                        <label for="edit-enabled"><span class="mdi mdi-power"></span> Activé</label>
                         <input type="checkbox" id="edit-enabled">
+                    </div>
+                </div>
+                <div class="mtls-section">
+                    <div class="mtls-toggle">
+                        <label class="mtls-label" for="edit-public">
+                            <span class="mdi mdi-shield-lock-outline"></span>
+                            <div>
+                                <span class="mtls-title">Exposer publiquement via mTLS</span>
+                                <span class="mtls-desc">HTTPS + vérification certificat client</span>
+                            </div>
+                        </label>
+                        <input type="checkbox" id="edit-public" class="toggle-check">
+                    </div>
+                    <div class="mtls-port-group hidden" id="mtls-port-edit">
+                        <label for="edit-public-port"><span class="mdi mdi-ethernet-cable"></span> Port public</label>
+                        <input type="number" id="edit-public-port" placeholder="8444" min="1024" max="65535">
+                        <span class="port-hint">À ouvrir sur votre box · Ex: 8444, 8445...</span>
                     </div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-ghost" id="btn-cancel-edit">Annuler</button>
-                    <button type="submit" class="btn btn-primary">
-                        <span class="mdi mdi-check"></span> Sauvegarder
-                    </button>
+                    <button type="submit" class="btn btn-primary"><span class="mdi mdi-check"></span> Sauvegarder</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- TOAST NOTIFICATIONS                                                -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- Toasts -->
     <div class="toast-container" id="toast-container"></div>
 
     <script src="app.js"></script>
