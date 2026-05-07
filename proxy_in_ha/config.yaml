@@ -1,10 +1,10 @@
 name: "ProxyInHA"
-version: "1.1.0"
+version: "1.2.0"
 slug: "proxy_in_ha"
 description: >-
-  Reverse proxy pour accéder à vos services locaux via Home Assistant
-  sans ouvrir de ports. Option mTLS pour exposer certains services
-  publiquement avec les mêmes certificats que votre Caddy existant.
+  Reverse proxy sécurisé pour Home Assistant. Accédez à vos services locaux
+  depuis n'importe où via le mTLS de HA. Génération automatique des certificats
+  ou réutilisation de ceux de Caddy.
 url: "https://github.com/TeALO36/ProxyInHA"
 arch:
   - amd64
@@ -26,9 +26,8 @@ options:
   services: []
   check_interval: 30
   domain: ""
-  cert_path: ""
-  cert_key_path: ""
-  mtls_ca_path: ""
+  tls_mode: "auto"
+  caddy_cert_domain: ""
 schema:
   services:
     - name: str
@@ -39,6 +38,5 @@ schema:
       public_port: "int?"
   check_interval: "int(5,300)"
   domain: str
-  cert_path: str
-  cert_key_path: str
-  mtls_ca_path: str
+  tls_mode: str
+  caddy_cert_domain: str

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProxyInHA — Dashboard</title>
-    <meta name="description" content="Gérez vos services locaux via le reverse proxy Home Assistant">
+    <meta name="description" content="Reverse proxy sécurisé pour Home Assistant avec mTLS">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -23,13 +23,13 @@
                 </div>
             </div>
             <div class="header-right">
-                <div class="stats-pill" id="stats-pill">
+                <div class="stats-pill">
                     <span class="mdi mdi-server-network"></span>
                     <span id="stats-count">0 services</span>
                 </div>
-                <div class="cert-status hidden" id="cert-status" title="Certificats TLS configurés">
+                <div class="cert-pill hidden" id="cert-pill">
                     <span class="mdi mdi-shield-lock"></span>
-                    <span id="cert-domain">mTLS OK</span>
+                    <span id="cert-pill-text">TLS OK</span>
                 </div>
                 <button class="btn-icon" id="btn-refresh" title="Rafraîchir"><span class="mdi mdi-refresh"></span></button>
                 <button class="btn-icon" id="btn-reload-nginx" title="Recharger Nginx"><span class="mdi mdi-reload"></span></button>
@@ -39,17 +39,73 @@
 
     <main id="app-main">
 
-        <!-- Alerte certificats manquants -->
-        <div class="alert-banner hidden" id="alert-no-certs">
-            <span class="mdi mdi-alert"></span>
-            <div>
-                <strong>Certificats TLS non configurés</strong>
-                <p>Pour activer l'exposition mTLS, configurez <code>cert_path</code>, <code>cert_key_path</code>, <code>mtls_ca_path</code> et <code>domain</code> dans les options de l'add-on.</p>
+        <!-- ── Panneau Certificats ────────────────────────────────── -->
+        <section class="certs-section" id="certs-section">
+            <div class="section-header" id="toggle-certs">
+                <h2><span class="mdi mdi-certificate"></span> Certificats TLS / mTLS</h2>
+                <span class="mdi mdi-chevron-down toggle-chevron" id="chevron-certs"></span>
             </div>
-        </div>
+            <div class="certs-panel collapsed" id="certs-panel">
+                <div class="certs-grid">
+                    <!-- Status -->
+                    <div class="cert-card" id="cert-card-server">
+                        <div class="cert-card-icon"><span class="mdi mdi-web"></span></div>
+                        <div class="cert-card-info">
+                            <div class="cert-card-title">Certificat serveur</div>
+                            <div class="cert-card-sub">TLS pour les connexions HTTPS</div>
+                        </div>
+                        <div class="cert-indicator unknown" id="cert-ind-server">
+                            <span class="mdi mdi-help-circle"></span>
+                        </div>
+                    </div>
+                    <div class="cert-card" id="cert-card-ca">
+                        <div class="cert-card-icon"><span class="mdi mdi-shield-account"></span></div>
+                        <div class="cert-card-info">
+                            <div class="cert-card-title">CA mTLS</div>
+                            <div class="cert-card-sub">Vérifie les certificats clients</div>
+                        </div>
+                        <div class="cert-indicator unknown" id="cert-ind-ca">
+                            <span class="mdi mdi-help-circle"></span>
+                        </div>
+                    </div>
+                    <div class="cert-card" id="cert-card-client">
+                        <div class="cert-card-icon"><span class="mdi mdi-badge-account"></span></div>
+                        <div class="cert-card-info">
+                            <div class="cert-card-title">Certificat client (.p12)</div>
+                            <div class="cert-card-sub">À installer dans votre navigateur</div>
+                        </div>
+                        <div class="cert-indicator unknown" id="cert-ind-client">
+                            <span class="mdi mdi-help-circle"></span>
+                        </div>
+                    </div>
+                </div>
 
-        <!-- Add Service -->
-        <section class="add-service-section" id="add-section">
+                <div class="certs-info" id="certs-mode-info"></div>
+
+                <div class="certs-actions">
+                    <button class="btn btn-primary" id="btn-regen-certs">
+                        <span class="mdi mdi-autorenew"></span> Générer / Regénérer les certificats
+                    </button>
+                    <button class="btn btn-download" id="btn-dl-client">
+                        <span class="mdi mdi-download"></span> Télécharger client.p12
+                    </button>
+                    <button class="btn btn-download-secondary" id="btn-dl-ca">
+                        <span class="mdi mdi-download"></span> Télécharger CA (.crt)
+                    </button>
+                </div>
+
+                <div class="install-guide">
+                    <span class="mdi mdi-information-outline"></span>
+                    <p>
+                        Installez <strong>proxyinha-client.p12</strong> dans votre navigateur (mot de passe : <code>proxyinha</code>).<br>
+                        Sur iOS/Android : installez le CA puis le .p12. Sur Chrome/Firefox : Paramètres → Certificats → Importer.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── Ajouter un service ──────────────────────────────────── -->
+        <section class="add-service-section">
             <div class="section-header" id="toggle-add-form">
                 <h2><span class="mdi mdi-plus-circle"></span> Ajouter un service</h2>
                 <span class="mdi mdi-chevron-down toggle-chevron" id="chevron-add"></span>
@@ -66,22 +122,20 @@
                     </div>
                     <div class="form-group">
                         <label for="svc-icon"><span class="mdi mdi-emoticon"></span> Icône MDI</label>
-                        <input type="text" id="svc-icon" placeholder="mdi:docker" value="mdi:server-network">
+                        <input type="text" id="svc-icon" value="mdi:server-network" placeholder="mdi:docker">
                     </div>
                     <div class="form-group form-group-checkbox">
                         <label for="svc-enabled"><span class="mdi mdi-power"></span> Activé</label>
                         <input type="checkbox" id="svc-enabled" checked>
                     </div>
                 </div>
-
-                <!-- mTLS Section -->
-                <div class="mtls-section" id="mtls-add-section">
+                <div class="mtls-section">
                     <div class="mtls-toggle">
                         <label class="mtls-label" for="svc-public">
                             <span class="mdi mdi-shield-lock-outline"></span>
                             <div>
                                 <span class="mtls-title">Exposer publiquement via mTLS</span>
-                                <span class="mtls-desc">Rend ce service accessible depuis Internet via HTTPS + certificat client</span>
+                                <span class="mtls-desc">HTTPS + vérification du certificat client installé dans votre navigateur</span>
                             </div>
                         </label>
                         <input type="checkbox" id="svc-public" class="toggle-check">
@@ -89,10 +143,9 @@
                     <div class="mtls-port-group hidden" id="mtls-port-add">
                         <label for="svc-public-port"><span class="mdi mdi-ethernet-cable"></span> Port public</label>
                         <input type="number" id="svc-public-port" placeholder="8444" min="1024" max="65535">
-                        <span class="port-hint">À ouvrir sur votre box · Ex: 8444, 8445...</span>
+                        <span class="port-hint">À ouvrir sur votre box · Ex: 8444, 8445…</span>
                     </div>
                 </div>
-
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">
                         <span class="mdi mdi-plus"></span> Ajouter
@@ -101,14 +154,13 @@
             </form>
         </section>
 
-        <!-- Services Grid -->
+        <!-- ── Services ───────────────────────────────────────────── -->
         <section class="services-section">
             <div class="section-header">
                 <h2><span class="mdi mdi-view-grid"></span> Services configurés</h2>
             </div>
             <div class="loading-state" id="loading-state">
-                <div class="spinner"></div>
-                <p>Chargement...</p>
+                <div class="spinner"></div><p>Chargement...</p>
             </div>
             <div class="empty-state hidden" id="empty-state">
                 <span class="mdi mdi-server-off"></span>
@@ -152,7 +204,7 @@
                             <span class="mdi mdi-shield-lock-outline"></span>
                             <div>
                                 <span class="mtls-title">Exposer publiquement via mTLS</span>
-                                <span class="mtls-desc">HTTPS + vérification certificat client</span>
+                                <span class="mtls-desc">HTTPS + certificat client</span>
                             </div>
                         </label>
                         <input type="checkbox" id="edit-public" class="toggle-check">
@@ -160,7 +212,7 @@
                     <div class="mtls-port-group hidden" id="mtls-port-edit">
                         <label for="edit-public-port"><span class="mdi mdi-ethernet-cable"></span> Port public</label>
                         <input type="number" id="edit-public-port" placeholder="8444" min="1024" max="65535">
-                        <span class="port-hint">À ouvrir sur votre box · Ex: 8444, 8445...</span>
+                        <span class="port-hint">À ouvrir sur votre box</span>
                     </div>
                 </div>
                 <div class="form-actions">
@@ -171,9 +223,7 @@
         </div>
     </div>
 
-    <!-- Toasts -->
     <div class="toast-container" id="toast-container"></div>
-
     <script src="app.js"></script>
 </body>
 </html>

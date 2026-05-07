@@ -1,63 +1,57 @@
-"""
-ProxyInHA v1.1.0 — API Server
-Flask API for managing proxy services including mTLS public exposure.
-"""
+"""ProxyInHA v1.2.0 — API Server with cert management"""
 
-import json
-import os
-import re
-import subprocess
-import uuid
-import urllib.request
-import urllib.error
-from flask import Flask, jsonify, request
+import json, os, re, subprocess, uuid, urllib.request, urllib.error
+from flask import Flask, jsonify, request, send_file
 
 app = Flask(__name__)
 
-# ---------------------------------------------------------------------------
-# Configuration from environment
-# ---------------------------------------------------------------------------
-SERVICES_DB   = os.environ.get("SERVICES_DB",   "/data/services.json")
+SERVICES_DB    = os.environ.get("SERVICES_DB",    "/data/services.json")
 NGINX_CONF_DIR = os.environ.get("NGINX_CONF_DIR", "/etc/nginx/conf.d")
 MTLS_CONF_DIR  = os.environ.get("MTLS_CONF_DIR",  "/etc/nginx/mtls.d")
-CERTS_DIR      = os.environ.get("CERTS_DIR",      "/etc/nginx/certs")
+NGINX_CERTS    = os.environ.get("NGINX_CERTS",    "/etc/nginx/certs")
+DATA_CERTS     = os.environ.get("DATA_CERTS",     "/data/certs")
 DOMAIN         = os.environ.get("DOMAIN",         "")
+TLS_MODE       = os.environ.get("TLS_MODE",       "auto")
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ── Helpers ──────────────────────────────────────────────────────────────────
 def load_services():
     try:
         with open(SERVICES_DB) as f:
-            services = json.load(f)
-        for svc in services:
-            if "id" not in svc:
-                svc["id"] = str(uuid.uuid4())[:8]
-        return services
-    except (FileNotFoundError, json.JSONDecodeError):
+            svcs = json.load(f)
+        for s in svcs:
+            if "id" not in s:
+                s["id"] = str(uuid.uuid4())[:8]
+        return svcs
+    except Exception:
         return []
 
-def save_services(services):
+def save_services(svcs):
     with open(SERVICES_DB, "w") as f:
-        json.dump(services, f, indent=2)
+        json.dump(svcs, f, indent=2)
 
 def slugify(name):
-    slug = name.lower()
-    slug = re.sub(r"[^a-z0-9]+", "-", slug)
-    return slug.strip("-")
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
-def generate_internal_config(services):
-    """Generate nginx location blocks for internal (ingress) proxy."""
+def run_cmd(*args):
+    r = subprocess.run(list(args), capture_output=True, text=True)
+    return r.returncode == 0, r.stdout + r.stderr
+
+def reload_nginx():
+    ok, _ = run_cmd("nginx", "-t")
+    if not ok: return False, "Config nginx invalide"
+    ok, msg = run_cmd("nginx", "-s", "reload")
+    return ok, msg or "Nginx rechargé"
+
+def generate_internal_conf(svcs):
     for f in os.listdir(NGINX_CONF_DIR):
         if f.startswith("proxy_") and f.endswith(".conf"):
             os.remove(os.path.join(NGINX_CONF_DIR, f))
-
-    for svc in services:
-        if not svc.get("enabled", False):
-            continue
+    for svc in svcs:
+        if not svc.get("enabled"): continue
         slug = slugify(svc["name"])
         url  = svc["url"].rstrip("/")
-        conf = f"""location /proxy/{slug}/ {{
+        with open(os.path.join(NGINX_CONF_DIR, f"proxy_{slug}.conf"), "w") as f:
+            f.write(f"""location /proxy/{slug}/ {{
     proxy_pass {url}/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -70,55 +64,41 @@ def generate_internal_config(services):
     proxy_send_timeout 86400s;
     proxy_read_timeout 86400s;
     proxy_buffering off;
-}}
-"""
-        with open(os.path.join(NGINX_CONF_DIR, f"proxy_{slug}.conf"), "w") as f_out:
-            f_out.write(conf)
+}}\n""")
 
-def generate_mtls_config(services):
-    """Generate nginx server blocks for public mTLS-protected services."""
+def generate_mtls_conf(svcs):
     for f in os.listdir(MTLS_CONF_DIR):
-        if f.endswith(".conf"):
-            os.remove(os.path.join(MTLS_CONF_DIR, f))
+        if f.endswith(".conf"): os.remove(os.path.join(MTLS_CONF_DIR, f))
 
-    server_crt = os.path.join(CERTS_DIR, "server.crt")
-    server_key = os.path.join(CERTS_DIR, "server.key")
-    ca_crt     = os.path.join(CERTS_DIR, "ca.crt")
+    server_crt = os.path.join(NGINX_CERTS, "server.crt")
+    server_key = os.path.join(NGINX_CERTS, "server.key")
+    ca_crt     = os.path.join(NGINX_CERTS, "ca.crt")
 
     if not os.path.exists(server_crt) or not os.path.exists(server_key):
-        return  # No TLS certs available
+        return
 
     ca_block = ""
     if os.path.exists(ca_crt):
-        ca_block = f"""
-    ssl_client_certificate {ca_crt};
-    ssl_verify_client on;"""
+        ca_block = f"\n    ssl_client_certificate {ca_crt};\n    ssl_verify_client on;"
 
-    for svc in services:
-        if not svc.get("enabled", False):
+    sn = DOMAIN or "_"
+    for svc in svcs:
+        if not svc.get("enabled") or not svc.get("public") or not svc.get("public_port"):
             continue
-        if not svc.get("public", False):
-            continue
-        port = svc.get("public_port")
-        if not port:
-            continue
-
         slug = slugify(svc["name"])
         url  = svc["url"].rstrip("/")
-        server_name = DOMAIN if DOMAIN else "_"
-
-        conf = f"""server {{
+        port = svc["public_port"]
+        with open(os.path.join(MTLS_CONF_DIR, f"mtls_{slug}.conf"), "w") as f:
+            f.write(f"""server {{
     listen {port} ssl;
-    server_name {server_name};
-
+    server_name {sn};
     ssl_certificate     {server_crt};
     ssl_certificate_key {server_key};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL_{slug}:10m;
-    ssl_session_timeout 1d;
-{ca_block}
+    ssl_session_timeout 1d;{ca_block}
 
     location / {{
         proxy_pass {url}/;
@@ -136,57 +116,98 @@ def generate_mtls_config(services):
         proxy_read_timeout 86400s;
         proxy_buffering off;
     }}
-}}
-"""
-        with open(os.path.join(MTLS_CONF_DIR, f"mtls_{slug}.conf"), "w") as f_out:
-            f_out.write(conf)
+}}\n""")
 
-def reload_nginx():
-    r = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
-    if r.returncode != 0:
-        return False, r.stderr
-    r = subprocess.run(["nginx", "-s", "reload"], capture_output=True, text=True)
-    if r.returncode != 0:
-        return False, r.stderr
-    return True, "Nginx rechargé"
-
-def apply_config(services):
-    generate_internal_config(services)
-    generate_mtls_config(services)
+def apply_all(svcs):
+    generate_internal_conf(svcs)
+    generate_mtls_conf(svcs)
     return reload_nginx()
 
 def check_health(url, timeout=5):
     try:
-        req = urllib.request.Request(url)
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        resp = urllib.request.urlopen(urllib.request.Request(url), timeout=timeout)
         return {"status": "online", "code": resp.getcode()}
     except urllib.error.HTTPError as e:
-        if e.code in (401, 403, 302):
-            return {"status": "online", "code": e.code}
-        return {"status": "error", "code": e.code}
+        return {"status": "online" if e.code in (401, 403, 302, 200) else "error", "code": e.code}
     except Exception:
         return {"status": "offline", "code": None}
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+def cert_status():
+    return {
+        "server_cert": os.path.exists(os.path.join(NGINX_CERTS, "server.crt")),
+        "server_key":  os.path.exists(os.path.join(NGINX_CERTS, "server.key")),
+        "ca_cert":     os.path.exists(os.path.join(NGINX_CERTS, "ca.crt")),
+        "client_p12":  os.path.exists(os.path.join(DATA_CERTS, "client.p12")),
+        "client_crt":  os.path.exists(os.path.join(DATA_CERTS, "client.crt")),
+        "tls_mode":    TLS_MODE,
+        "domain":      DOMAIN,
+    }
+
+def regen_certs():
+    """Régénère tous les certificats auto-signés."""
+    domain = DOMAIN or "proxyinha.local"
+    d = DATA_CERTS
+    os.makedirs(d, exist_ok=True)
+
+    cmds = [
+        # CA
+        ["openssl", "genrsa", "-out", f"{d}/ca.key", "4096"],
+        ["openssl", "req", "-new", "-x509", "-days", "3650",
+         "-key", f"{d}/ca.key", "-out", f"{d}/ca.crt",
+         "-subj", "/C=FR/ST=France/O=ProxyInHA/CN=ProxyInHA Root CA"],
+        # Server key + CSR
+        ["openssl", "genrsa", "-out", f"{d}/server.key", "2048"],
+        ["openssl", "req", "-new", "-key", f"{d}/server.key",
+         "-out", f"{d}/server.csr",
+         "-subj", f"/C=FR/ST=France/O=ProxyInHA/CN={domain}"],
+    ]
+    ext = f"[v3_req]\nsubjectAltName = @alt_names\n[alt_names]\nDNS.1 = {domain}\nDNS.2 = localhost\nIP.1 = 127.0.0.1\n"
+    with open("/tmp/server_ext.cnf", "w") as f:
+        f.write(ext)
+    cmds += [
+        ["openssl", "x509", "-req", "-days", "825",
+         "-in", f"{d}/server.csr", "-CA", f"{d}/ca.crt", "-CAkey", f"{d}/ca.key",
+         "-CAcreateserial", "-out", f"{d}/server.crt",
+         "-extfile", "/tmp/server_ext.cnf", "-extensions", "v3_req"],
+        # Client cert
+        ["openssl", "genrsa", "-out", f"{d}/client.key", "2048"],
+        ["openssl", "req", "-new", "-key", f"{d}/client.key",
+         "-out", f"{d}/client.csr",
+         "-subj", "/C=FR/ST=France/O=ProxyInHA/CN=ProxyInHA Client"],
+        ["openssl", "x509", "-req", "-days", "825",
+         "-in", f"{d}/client.csr", "-CA", f"{d}/ca.crt", "-CAkey", f"{d}/ca.key",
+         "-CAcreateserial", "-out", f"{d}/client.crt"],
+        # p12
+        ["openssl", "pkcs12", "-export",
+         "-in", f"{d}/client.crt", "-inkey", f"{d}/client.key",
+         "-certfile", f"{d}/ca.crt", "-out", f"{d}/client.p12",
+         "-passout", "pass:proxyinha"],
+    ]
+    for cmd in cmds:
+        ok, err = run_cmd(*cmd)
+        if not ok:
+            return False, f"Erreur: {' '.join(cmd[:3])}: {err}"
+
+    import shutil
+    shutil.copy(f"{d}/server.crt", os.path.join(NGINX_CERTS, "server.crt"))
+    shutil.copy(f"{d}/server.key", os.path.join(NGINX_CERTS, "server.key"))
+    shutil.copy(f"{d}/ca.crt",    os.path.join(NGINX_CERTS, "ca.crt"))
+    os.chmod(os.path.join(NGINX_CERTS, "server.key"), 0o600)
+    return True, "Certificats régénérés"
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 @app.route("/api/info")
 def api_info():
-    services = load_services()
-    enabled  = [s for s in services if s.get("enabled")]
-    public   = [s for s in services if s.get("public") and s.get("enabled")]
-    certs = {
-        "server_cert": os.path.exists(os.path.join(CERTS_DIR, "server.crt")),
-        "server_key":  os.path.exists(os.path.join(CERTS_DIR, "server.key")),
-        "ca_cert":     os.path.exists(os.path.join(CERTS_DIR, "ca.crt")),
-    }
+    svcs = load_services()
+    cs = cert_status()
     return jsonify({
-        "version": "1.1.0",
+        "version": "1.2.0",
         "domain": DOMAIN,
-        "total_services": len(services),
-        "enabled_services": len(enabled),
-        "public_mtls_services": len(public),
-        "certs": certs,
+        "tls_mode": TLS_MODE,
+        "total_services": len(svcs),
+        "enabled_services": sum(1 for s in svcs if s.get("enabled")),
+        "public_services": sum(1 for s in svcs if s.get("public") and s.get("enabled")),
+        "certs": cs,
     })
 
 @app.route("/api/services")
@@ -197,85 +218,84 @@ def list_services():
 def add_service():
     data = request.get_json()
     if not data or not data.get("name") or not data.get("url"):
-        return jsonify({"error": "name et url sont requis"}), 400
-
-    services = load_services()
-    if any(s["name"].lower() == data["name"].lower() for s in services):
+        return jsonify({"error": "name et url requis"}), 400
+    svcs = load_services()
+    if any(s["name"].lower() == data["name"].lower() for s in svcs):
         return jsonify({"error": f"Service '{data['name']}' existe déjà"}), 409
-
     svc = {
-        "id":          str(uuid.uuid4())[:8],
-        "name":        data["name"],
-        "url":         data["url"].rstrip("/"),
-        "icon":        data.get("icon", "mdi:server-network"),
-        "enabled":     data.get("enabled", True),
-        "public":      data.get("public", False),
+        "id": str(uuid.uuid4())[:8],
+        "name": data["name"],
+        "url": data["url"].rstrip("/"),
+        "icon": data.get("icon", "mdi:server-network"),
+        "enabled": data.get("enabled", True),
+        "public": data.get("public", False),
         "public_port": data.get("public_port") or None,
     }
-    services.append(svc)
-    save_services(services)
-    ok, msg = apply_config(services)
+    svcs.append(svc)
+    save_services(svcs)
+    ok, msg = apply_all(svcs)
     return jsonify({"service": svc, "nginx_reload": ok, "message": msg}), 201
 
 @app.route("/api/services/<sid>", methods=["PUT"])
 def update_service(sid):
     data = request.get_json()
-    services = load_services()
-    svc = next((s for s in services if s["id"] == sid), None)
-    if not svc:
-        return jsonify({"error": "Service introuvable"}), 404
-
+    svcs = load_services()
+    svc = next((s for s in svcs if s["id"] == sid), None)
+    if not svc: return jsonify({"error": "Service introuvable"}), 404
     for field in ("name", "url", "icon", "enabled", "public", "public_port"):
         if field in data:
-            val = data[field]
-            if field == "url":
-                val = val.rstrip("/")
-            svc[field] = val
-
-    save_services(services)
-    ok, msg = apply_config(services)
+            svc[field] = data[field].rstrip("/") if field == "url" else data[field]
+    save_services(svcs)
+    ok, msg = apply_all(svcs)
     return jsonify({"service": svc, "nginx_reload": ok, "message": msg})
 
 @app.route("/api/services/<sid>", methods=["DELETE"])
 def delete_service(sid):
-    services = load_services()
-    new = [s for s in services if s["id"] != sid]
-    if len(new) == len(services):
-        return jsonify({"error": "Service introuvable"}), 404
+    svcs = load_services()
+    new = [s for s in svcs if s["id"] != sid]
+    if len(new) == len(svcs): return jsonify({"error": "Introuvable"}), 404
     save_services(new)
-    ok, msg = apply_config(new)
+    ok, msg = apply_all(new)
     return jsonify({"deleted": True, "nginx_reload": ok, "message": msg})
-
-@app.route("/api/services/<sid>/health")
-def service_health(sid):
-    svc = next((s for s in load_services() if s["id"] == sid), None)
-    if not svc:
-        return jsonify({"error": "Service introuvable"}), 404
-    return jsonify({"id": sid, "name": svc["name"], **check_health(svc["url"])})
 
 @app.route("/api/health")
 def all_health():
-    results = []
-    for svc in load_services():
-        if svc.get("enabled"):
-            results.append({"id": svc["id"], "name": svc["name"],
-                            **check_health(svc["url"])})
-    return jsonify(results)
+    return jsonify([
+        {"id": s["id"], "name": s["name"], **check_health(s["url"])}
+        for s in load_services() if s.get("enabled")
+    ])
 
 @app.route("/api/reload", methods=["POST"])
 def api_reload():
-    ok, msg = apply_config(load_services())
+    ok, msg = apply_all(load_services())
     return jsonify({"success": ok, "message": msg})
 
 @app.route("/api/certs")
 def api_certs():
-    return jsonify({
-        "server_cert": os.path.exists(os.path.join(CERTS_DIR, "server.crt")),
-        "server_key":  os.path.exists(os.path.join(CERTS_DIR, "server.key")),
-        "ca_cert":     os.path.exists(os.path.join(CERTS_DIR, "ca.crt")),
-        "domain": DOMAIN,
-    })
+    return jsonify(cert_status())
 
-# ---------------------------------------------------------------------------
+@app.route("/api/certs/regenerate", methods=["POST"])
+def api_regen():
+    ok, msg = regen_certs()
+    if ok:
+        apply_all(load_services())
+    return jsonify({"success": ok, "message": msg})
+
+@app.route("/api/certs/download/client")
+def download_client():
+    p = os.path.join(DATA_CERTS, "client.p12")
+    if not os.path.exists(p):
+        return jsonify({"error": "client.p12 non trouvé — générez d'abord les certs"}), 404
+    return send_file(p, as_attachment=True, download_name="proxyinha-client.p12",
+                     mimetype="application/x-pkcs12")
+
+@app.route("/api/certs/download/ca")
+def download_ca():
+    p = os.path.join(DATA_CERTS, "ca.crt")
+    if not os.path.exists(p):
+        return jsonify({"error": "ca.crt non trouvé"}), 404
+    return send_file(p, as_attachment=True, download_name="proxyinha-ca.crt",
+                     mimetype="application/x-x509-ca-cert")
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=False)
