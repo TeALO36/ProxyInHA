@@ -1,12 +1,12 @@
 #!/usr/bin/with-contenv bashio
 
 ###############################################################################
-# ProxyInHA v1.2.0 — Entrypoint
+# ProxyInHA v1.2.2 — Entrypoint
 # Gère automatiquement les certificats TLS + mTLS et la configuration Nginx
 ###############################################################################
 
 bashio::log.info "============================================"
-bashio::log.info " ProxyInHA v1.2.0 — Auto TLS + mTLS"
+bashio::log.info " ProxyInHA v1.2.2 — Auto TLS + mTLS"
 bashio::log.info "============================================"
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
@@ -27,8 +27,14 @@ bashio::log.info "Domaine      : ${DOMAIN:-'(non configuré)'}"
 
 # ── Initialiser la base de données ──────────────────────────────────────────
 if [ ! -f "${SERVICES_DB}" ]; then
-    bashio::log.info "Initialisation base de données..."
-    echo '[]' > "${SERVICES_DB}"
+    bashio::log.info "Initialisation base de données avec services par défaut..."
+    # Copier les services pré-configurés si disponibles
+    if [ -f "/opt/default_services.json" ]; then
+        cp /opt/default_services.json "${SERVICES_DB}"
+        bashio::log.info "Services pré-configurés chargés ✓"
+    else
+        echo '[]' > "${SERVICES_DB}"
+    fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════

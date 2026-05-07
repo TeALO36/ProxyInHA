@@ -15,6 +15,7 @@ RUN dos2unix /etc/nginx/nginx.conf
 
 COPY web/ /var/www/html/
 COPY api/ /opt/api/
+COPY default_services.json /opt/default_services.json
 RUN dos2unix /opt/api/*.py 2>/dev/null || true
 
 COPY run.sh /

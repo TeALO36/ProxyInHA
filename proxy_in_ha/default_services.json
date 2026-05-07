@@ -1,0 +1,29 @@
+[
+  {
+    "id": "uptimekuma",
+    "name": "Uptime Kuma",
+    "url": "http://192.168.0.100:3001",
+    "icon": "mdi:heart-pulse",
+    "enabled": true,
+    "public": false,
+    "public_port": null
+  },
+  {
+    "id": "portainer",
+    "name": "Portainer",
+    "url": "https://192.168.0.100:9443",
+    "icon": "mdi:docker",
+    "enabled": true,
+    "public": false,
+    "public_port": null
+  },
+  {
+    "id": "openclaw",
+    "name": "OpenClaw",
+    "url": "http://192.168.0.100:18789",
+    "icon": "mdi:robot",
+    "enabled": true,
+    "public": true,
+    "public_port": 18789
+  }
+]
