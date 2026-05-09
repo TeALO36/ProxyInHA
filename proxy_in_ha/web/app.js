@@ -103,7 +103,7 @@
                     </div>
                 </div>
                 <div class="card-actions">
-                    <button class="btn btn-sm btn-open" onclick="window.open('./proxy/${slug}/','_blank')"><span class="mdi mdi-open-in-new"></span> Ouvrir</button>
+                    <button class="btn btn-sm btn-open" onclick="ProxyApp.openProxy('${slug}')"><span class="mdi mdi-open-in-new"></span> Ouvrir</button>
                     ${isMtls ? `<button class="btn btn-sm btn-open-mtls" onclick="ProxyApp.openMtls('${svc.id}')"><span class="mdi mdi-shield-lock"></span>:${svc.public_port}</button>` : ""}
                     <button class="btn btn-sm btn-edit" onclick="ProxyApp.editService('${svc.id}')"><span class="mdi mdi-pencil"></span></button>
                     <button class="btn btn-sm btn-delete" onclick="ProxyApp.deleteService('${svc.id}')"><span class="mdi mdi-delete"></span></button>
@@ -218,7 +218,20 @@
     dom.btnDlClient.addEventListener("click", () => downloadFile("/certs/download/client", "proxyinha-client.p12"));
     dom.btnDlCa.addEventListener("click", () => downloadFile("/certs/download/ca", "proxyinha-ca.crt"));
 
-    window.ProxyApp = { editService: openEdit, deleteService: del, openMtls };
+    function openProxy(slug) {
+        // Construire le chemin propre vers le proxy en évitant le double slash
+        // L'URL ingress ressemble à: https://host:port/api/hassio_ingress/TOKEN/
+        // ou via reverse proxy: https://host:port/ADDON_SLUG/
+        const href = window.location.href;
+        // Trouver la base: tout ce qui est avant "proxy/" ou avant le dernier segment
+        // Utiliser l'API fetch relative pour résoudre correctement
+        const base = new URL('.', window.location.href).href;
+        const url = base.replace(/\/$/, '') + '/proxy/' + slug + '/';
+        window.open(url, '_blank');
+    }
+
+    window.ProxyApp = { editService: openEdit, deleteService: del, openMtls, openProxy };
+
 
     // ── HA Theme Sync ────────────────────────────────────────────────
     function syncHaTheme() {
