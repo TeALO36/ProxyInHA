@@ -74,18 +74,24 @@ location /proxy/{slug}/ {{
     proxy_read_timeout 86400s;
     proxy_send_timeout 86400s;
 
-    # Injecter <base href> pour que les SPA chargent leurs assets correctement
-    sub_filter '<head>' '<head><base href="/proxy/{slug}/">';
-    sub_filter_once on;
+    # Reecrire les chemins absolus dans les reponses HTML
+    sub_filter 'src="/assets/'  'src="/proxy/{slug}/assets/';
+    sub_filter 'href="/assets/' 'href="/proxy/{slug}/assets/';
+    sub_filter 'src="/static/'  'src="/proxy/{slug}/static/';
+    sub_filter 'href="/static/' 'href="/proxy/{slug}/static/';
+    sub_filter 'src="/js/'      'src="/proxy/{slug}/js/';
+    sub_filter 'href="/css/'    'href="/proxy/{slug}/css/';
+    sub_filter_once off;
     sub_filter_types text/html;
 }}
 
-# Assets de {svc['name']} (chargés via chemin absolu par les SPAs)
+# Assets de {svc['name']} (chemins absolus des SPAs)
 location /proxy/{slug}/assets/ {{
     proxy_pass {url}/assets/;
     proxy_http_version 1.1;
     proxy_set_header Host $http_host;
     proxy_buffering off;
+    proxy_read_timeout 30s;
 }}
 location /proxy/{slug}/static/ {{
     proxy_pass {url}/static/;
@@ -93,7 +99,22 @@ location /proxy/{slug}/static/ {{
     proxy_set_header Host $http_host;
     proxy_buffering off;
 }}
+location /proxy/{slug}/js/ {{
+    proxy_pass {url}/js/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_buffering off;
+}}
+location /proxy/{slug}/css/ {{
+    proxy_pass {url}/css/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_buffering off;
+}}
 """)
+
+
+
 
 
 
