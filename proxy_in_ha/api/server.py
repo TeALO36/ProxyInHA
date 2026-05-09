@@ -61,7 +61,6 @@ def generate_internal_conf(svcs):
         with open(conf_path, "w") as f:
             f.write(f"""# Proxy interne pour {svc['name']}
 location /proxy/{slug}/ {{
-    rewrite ^/proxy/{slug}/(.*)$ /$1 break;
     proxy_pass {url}/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -75,11 +74,28 @@ location /proxy/{slug}/ {{
     proxy_read_timeout 86400s;
     proxy_send_timeout 86400s;
 
-    # Réécrire les URLs absolues dans les réponses HTML/CSS/JS
-    sub_filter_once off;
-    sub_filter_types text/html text/css application/javascript;
+    # Injecter <base href> pour que les SPA chargent leurs assets correctement
+    sub_filter '<head>' '<head><base href="/proxy/{slug}/">';
+    sub_filter_once on;
+    sub_filter_types text/html;
+}}
+
+# Assets de {svc['name']} (chargés via chemin absolu par les SPAs)
+location /proxy/{slug}/assets/ {{
+    proxy_pass {url}/assets/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_buffering off;
+}}
+location /proxy/{slug}/static/ {{
+    proxy_pass {url}/static/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_buffering off;
 }}
 """)
+
+
 
 def generate_mtls_conf(svcs):
     os.makedirs(MTLS_CONF_DIR, exist_ok=True)

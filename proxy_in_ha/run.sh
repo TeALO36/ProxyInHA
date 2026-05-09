@@ -1,12 +1,12 @@
 #!/usr/bin/with-contenv bashio
 
 ###############################################################################
-# ProxyInHA v1.3.0 — Entrypoint
+# ProxyInHA v1.3.4 — Entrypoint
 # Gère automatiquement les certificats TLS + mTLS et la configuration Nginx
 ###############################################################################
 
 bashio::log.info "============================================"
-bashio::log.info " ProxyInHA v1.3.3 — Auto TLS + mTLS"
+bashio::log.info " ProxyInHA v1.3.4 — Auto TLS + mTLS"
 bashio::log.info "============================================"
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
