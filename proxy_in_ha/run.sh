@@ -6,7 +6,7 @@
 ###############################################################################
 
 bashio::log.info "============================================"
-bashio::log.info " ProxyInHA v1.3.0 — Auto TLS + mTLS"
+bashio::log.info " ProxyInHA v1.3.1 — Auto TLS + mTLS"
 bashio::log.info "============================================"
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
@@ -29,60 +29,46 @@ bashio::log.info "Domaine      : ${DOMAIN:-'(non configuré)'}"
 # Les options HA sont la source de vérité. On fusionne avec services.json
 # pour conserver les IDs existants.
 sync_ha_options() {
-    local ha_services
-    ha_services=$(bashio::config 'services' 2>/dev/null || echo '[]')
+    local ha_services existing_json count merged
 
-    # Si pas de services dans les options HA, initialiser vide
-    if [ -z "${ha_services}" ] || [ "${ha_services}" == "null" ]; then
+    # Lire les services depuis les options HA et compacter en JSON valide sur une ligne
+    ha_services=$(bashio::config 'services' 2>/dev/null | jq -c '.' 2>/dev/null || echo '[]')
+
+    # Valider que c'est bien un tableau JSON
+    if ! echo "${ha_services}" | jq -e 'type == "array"' >/dev/null 2>&1; then
         ha_services='[]'
     fi
 
-    local count
     count=$(echo "${ha_services}" | jq 'length')
-    bashio::log.info "Options HA : ${count} service(s) configuré(s)"
+    bashio::log.info "Options HA : ${count} service(s)"
 
-    # Charger les services existants pour récupérer les IDs
-    local existing='[]'
+    # Charger les services existants pour recuperer les IDs
+    existing_json='[]'
     if [ -f "${SERVICES_DB}" ]; then
-        existing=$(cat "${SERVICES_DB}" 2>/dev/null || echo '[]')
+        existing_json=$(cat "${SERVICES_DB}" 2>/dev/null | jq -c '.' 2>/dev/null || echo '[]')
     fi
 
-    # Fusionner : pour chaque service HA, chercher un ID existant par nom
-    local merged='[]'
-    local i=0
-    while [ ${i} -lt ${count} ]; do
-        local svc_name svc_url svc_icon svc_enabled svc_public svc_public_port
-        svc_name=$(echo "${ha_services}" | jq -r ".[${i}].name")
-        svc_url=$(echo "${ha_services}" | jq -r ".[${i}].url")
-        svc_icon=$(echo "${ha_services}" | jq -r ".[${i}].icon // \"mdi:server-network\"")
-        svc_enabled=$(echo "${ha_services}" | jq -r ".[${i}].enabled // true")
-        svc_public=$(echo "${ha_services}" | jq -r ".[${i}].public // false")
-        svc_public_port=$(echo "${ha_services}" | jq -r ".[${i}].public_port // null")
-
-        # Chercher un ID existant pour ce nom de service
-        local existing_id
-        existing_id=$(echo "${existing}" | jq -r --arg n "${svc_name}" \
-            '[.[] | select(.name == $n)] | .[0].id // empty')
-
-        if [ -z "${existing_id}" ]; then
-            existing_id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | cut -c1-8 || echo "svc${i}")
-        fi
-
-        merged=$(echo "${merged}" | jq \
-            --arg id "${existing_id}" \
-            --arg name "${svc_name}" \
-            --arg url "${svc_url}" \
-            --arg icon "${svc_icon}" \
-            --argjson enabled "${svc_enabled}" \
-            --argjson public "${svc_public}" \
-            --argjson port "${svc_public_port}" \
-            '. + [{id: $id, name: $name, url: $url, icon: $icon, enabled: $enabled, public: $public, public_port: $port}]')
-
-        i=$((i + 1))
-    done
+    # Fusion en une seule passe jq — genere les IDs depuis l'index si absent
+    merged=$(jq -n \
+        --argjson ha "${ha_services}" \
+        --argjson existing "${existing_json}" \
+        '$ha | to_entries | map(
+            .value as $svc |
+            .key as $idx |
+            ($existing | map(select(.name == $svc.name)) | .[0].id // ("svc" + ($idx | tostring))) as $id |
+            {
+                id: $id,
+                name: $svc.name,
+                url: ($svc.url // ""),
+                icon: ($svc.icon // "mdi:server-network"),
+                enabled: ($svc.enabled // true),
+                public: ($svc.public // false),
+                public_port: ($svc.public_port // null)
+            }
+        )')
 
     echo "${merged}" | jq '.' > "${SERVICES_DB}"
-    bashio::log.info "Services synchronisés depuis les options HA ✓"
+    bashio::log.info "Services synchronises depuis les options HA ✓"
 }
 
 sync_ha_options

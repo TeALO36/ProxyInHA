@@ -14,8 +14,8 @@ COPY nginx/nginx.conf /etc/nginx/nginx.conf
 RUN dos2unix /etc/nginx/nginx.conf
 
 COPY web/ /var/www/html/
-# Cache-bust: v1.3.0
-ARG CACHE_BUST=v1.3.0
+# Cache-bust: v1.3.1
+ARG CACHE_BUST=v1.3.1
 COPY api/ /opt/api/
 RUN dos2unix /opt/api/*.py 2>/dev/null || true
 
