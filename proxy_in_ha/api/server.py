@@ -65,7 +65,7 @@ location /proxy/{slug}/ {{
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host $http_host;
+    proxy_set_header Host $proxy_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -89,26 +89,26 @@ location /proxy/{slug}/ {{
 location /proxy/{slug}/assets/ {{
     proxy_pass {url}/assets/;
     proxy_http_version 1.1;
-    proxy_set_header Host $http_host;
+    proxy_set_header Host $proxy_host;
     proxy_buffering off;
     proxy_read_timeout 30s;
 }}
 location /proxy/{slug}/static/ {{
     proxy_pass {url}/static/;
     proxy_http_version 1.1;
-    proxy_set_header Host $http_host;
+    proxy_set_header Host $proxy_host;
     proxy_buffering off;
 }}
 location /proxy/{slug}/js/ {{
     proxy_pass {url}/js/;
     proxy_http_version 1.1;
-    proxy_set_header Host $http_host;
+    proxy_set_header Host $proxy_host;
     proxy_buffering off;
 }}
 location /proxy/{slug}/css/ {{
     proxy_pass {url}/css/;
     proxy_http_version 1.1;
-    proxy_set_header Host $http_host;
+    proxy_set_header Host $proxy_host;
     proxy_buffering off;
 }}
 """)
@@ -155,7 +155,7 @@ def generate_mtls_conf(svcs):
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
+        proxy_set_header Host $proxy_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
@@ -244,9 +244,9 @@ def index():
 
 @app.route("/<path:path>")
 def static_files(path):
-    # Ne pas intercepter les routes /api/
+    # Ne pas intercepter les routes /api/ ou /proxy/
     if path.startswith("api/") or path.startswith("proxy/"):
-        return jsonify({"error": "Not found"}), 404
+        return jsonify({"error": "Flask: Route not found"}), 404
     try:
         return send_from_directory("/var/www/html", path)
     except Exception:
