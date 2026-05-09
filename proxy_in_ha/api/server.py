@@ -82,8 +82,8 @@ location /proxy/{slug}/ {{
     sub_filter 'src="/js/'      'src="/proxy/{slug}/js/';
     sub_filter 'href="/css/'    'href="/proxy/{slug}/css/';
     sub_filter_once off;
-    sub_filter_types text/html;
 }}
+
 
 # Assets de {svc['name']} (chemins absolus des SPAs)
 location /proxy/{slug}/assets/ {{
