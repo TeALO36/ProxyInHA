@@ -1,4 +1,4 @@
-/* ProxyInHA v1.2.0 — App Logic */
+/* ProxyInHA v1.3.0 — App Logic */
 (function () {
     "use strict";
     const API = "./api";
@@ -220,7 +220,61 @@
 
     window.ProxyApp = { editService: openEdit, deleteService: del, openMtls };
 
+    // ── HA Theme Sync ────────────────────────────────────────────────
+    function syncHaTheme() {
+        try {
+            const parentDoc = window.parent && window.parent.document;
+            if (!parentDoc || parentDoc === document) return;
+
+            const parentStyles = getComputedStyle(parentDoc.documentElement);
+            const root = document.documentElement.style;
+
+            // Map HA CSS variables → our --ha-* intermediaries
+            const map = {
+                '--ha-bg':            '--primary-background-color',
+                '--ha-bg-secondary':  '--secondary-background-color',
+                '--ha-bg-card':       '--card-background-color',
+                '--ha-bg-card-hover': '--card-background-color',
+                '--ha-text':          '--primary-text-color',
+                '--ha-text-secondary':'--secondary-text-color',
+                '--ha-text-muted':    '--disabled-text-color',
+                '--ha-border':        '--divider-color',
+                '--ha-accent':        '--primary-color',
+                '--ha-accent-hover':  '--primary-color',
+                '--ha-border-focus':  '--primary-color',
+                '--ha-font':          '--paper-font-body1_-_font-family',
+            };
+
+            let applied = 0;
+            for (const [our, ha] of Object.entries(map)) {
+                const val = parentStyles.getPropertyValue(ha).trim();
+                if (val) {
+                    root.setProperty(our, val);
+                    applied++;
+                }
+            }
+
+            // Derive glow/overlay from accent
+            const accent = parentStyles.getPropertyValue('--primary-color').trim();
+            if (accent) {
+                root.setProperty('--ha-accent-glow', accent.replace(')', ', 0.25)').replace('rgb(', 'rgba('));
+                root.setProperty('--ha-overlay', 'rgba(0,0,0,0.5)');
+            }
+
+            if (applied > 0) {
+                console.log(`[ProxyInHA] HA theme synced (${applied} variables)`);
+            }
+        } catch (e) {
+            // Cross-origin or no parent — use fallback theme
+            console.log('[ProxyInHA] Standalone mode (no HA theme)');
+        }
+    }
+
     // ── Init ─────────────────────────────────────────────────────────
+    syncHaTheme();
+    // Re-sync theme periodically in case user changes it
+    setInterval(syncHaTheme, 5000);
+
     loadCerts();
     load();
     startPoll();
