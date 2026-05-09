@@ -219,13 +219,10 @@
     dom.btnDlCa.addEventListener("click", () => downloadFile("/certs/download/ca", "proxyinha-ca.crt"));
 
     function openProxy(slug) {
-        // Garantir que la base URL préserve le chemin actuel (ex: /6dc47506_proxy_in_ha)
-        // même s'il n'y a pas de slash final.
-        let currentPath = window.location.pathname;
-        if (!currentPath.endsWith('/')) {
-            currentPath += '/';
-        }
-        const base = window.location.origin + currentPath;
+        // Obtenir l'URL de base absolue correcte. 
+        // Si on est dans l'ingress HA, location.href = .../api/hassio_ingress/TOKEN/
+        const href = window.location.href;
+        const base = href.substring(0, href.lastIndexOf('/') + 1) || href + '/';
         const url = base + 'proxy/' + slug + '/';
         window.open(url, '_blank');
     }
