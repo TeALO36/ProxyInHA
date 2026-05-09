@@ -1,12 +1,12 @@
 #!/usr/bin/with-contenv bashio
 
 ###############################################################################
-# ProxyInHA v1.2.2 — Entrypoint
+# ProxyInHA v1.3.0 — Entrypoint
 # Gère automatiquement les certificats TLS + mTLS et la configuration Nginx
 ###############################################################################
 
 bashio::log.info "============================================"
-bashio::log.info " ProxyInHA v1.2.2 — Auto TLS + mTLS"
+bashio::log.info " ProxyInHA v1.3.0 — Auto TLS + mTLS"
 bashio::log.info "============================================"
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
@@ -25,17 +25,67 @@ mkdir -p "${DATA_CERTS}" "${NGINX_CERTS}" "${NGINX_CONF_DIR}" "${MTLS_CONF_DIR}"
 bashio::log.info "Mode TLS     : ${TLS_MODE}"
 bashio::log.info "Domaine      : ${DOMAIN:-'(non configuré)'}"
 
-# ── Initialiser la base de données ──────────────────────────────────────────
-if [ ! -f "${SERVICES_DB}" ]; then
-    bashio::log.info "Initialisation base de données avec services par défaut..."
-    # Copier les services pré-configurés si disponibles
-    if [ -f "/opt/default_services.json" ]; then
-        cp /opt/default_services.json "${SERVICES_DB}"
-        bashio::log.info "Services pré-configurés chargés ✓"
-    else
-        echo '[]' > "${SERVICES_DB}"
+# ── Synchroniser les options HA → services.json ─────────────────────────────
+# Les options HA sont la source de vérité. On fusionne avec services.json
+# pour conserver les IDs existants.
+sync_ha_options() {
+    local ha_services
+    ha_services=$(bashio::config 'services' 2>/dev/null || echo '[]')
+
+    # Si pas de services dans les options HA, initialiser vide
+    if [ -z "${ha_services}" ] || [ "${ha_services}" == "null" ]; then
+        ha_services='[]'
     fi
-fi
+
+    local count
+    count=$(echo "${ha_services}" | jq 'length')
+    bashio::log.info "Options HA : ${count} service(s) configuré(s)"
+
+    # Charger les services existants pour récupérer les IDs
+    local existing='[]'
+    if [ -f "${SERVICES_DB}" ]; then
+        existing=$(cat "${SERVICES_DB}" 2>/dev/null || echo '[]')
+    fi
+
+    # Fusionner : pour chaque service HA, chercher un ID existant par nom
+    local merged='[]'
+    local i=0
+    while [ ${i} -lt ${count} ]; do
+        local svc_name svc_url svc_icon svc_enabled svc_public svc_public_port
+        svc_name=$(echo "${ha_services}" | jq -r ".[${i}].name")
+        svc_url=$(echo "${ha_services}" | jq -r ".[${i}].url")
+        svc_icon=$(echo "${ha_services}" | jq -r ".[${i}].icon // \"mdi:server-network\"")
+        svc_enabled=$(echo "${ha_services}" | jq -r ".[${i}].enabled // true")
+        svc_public=$(echo "${ha_services}" | jq -r ".[${i}].public // false")
+        svc_public_port=$(echo "${ha_services}" | jq -r ".[${i}].public_port // null")
+
+        # Chercher un ID existant pour ce nom de service
+        local existing_id
+        existing_id=$(echo "${existing}" | jq -r --arg n "${svc_name}" \
+            '[.[] | select(.name == $n)] | .[0].id // empty')
+
+        if [ -z "${existing_id}" ]; then
+            existing_id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | cut -c1-8 || echo "svc${i}")
+        fi
+
+        merged=$(echo "${merged}" | jq \
+            --arg id "${existing_id}" \
+            --arg name "${svc_name}" \
+            --arg url "${svc_url}" \
+            --arg icon "${svc_icon}" \
+            --argjson enabled "${svc_enabled}" \
+            --argjson public "${svc_public}" \
+            --argjson port "${svc_public_port}" \
+            '. + [{id: $id, name: $name, url: $url, icon: $icon, enabled: $enabled, public: $public, public_port: $port}]')
+
+        i=$((i + 1))
+    done
+
+    echo "${merged}" | jq '.' > "${SERVICES_DB}"
+    bashio::log.info "Services synchronisés depuis les options HA ✓"
+}
+
+sync_ha_options
 
 # ═══════════════════════════════════════════════════════════════════════════
 # GESTION DES CERTIFICATS

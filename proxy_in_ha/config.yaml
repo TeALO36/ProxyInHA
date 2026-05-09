@@ -1,5 +1,5 @@
 name: "ProxyInHA"
-version: "1.2.5"
+version: "1.3.0"
 slug: "proxy_in_ha"
 description: >-
   Reverse proxy sécurisé pour Home Assistant. Accédez à vos services locaux
@@ -16,7 +16,7 @@ host_network: true
 ingress: true
 ingress_port: 8099
 ingress_entry: /
-panel_icon: "mdi:shield-network"
+panel_icon: "mdi:shield-lock"
 panel_title: "ProxyInHA"
 panel_admin: true
 map:
