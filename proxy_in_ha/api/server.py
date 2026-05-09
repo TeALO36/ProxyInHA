@@ -47,16 +47,39 @@ def reload_nginx():
 
 def generate_internal_conf(svcs):
     os.makedirs(NGINX_CONF_DIR, exist_ok=True)
+    # Supprimer les anciens fichiers proxy_*
     for f in os.listdir(NGINX_CONF_DIR):
         if f.startswith("proxy_") and f.endswith(".conf"):
             os.remove(os.path.join(NGINX_CONF_DIR, f))
+
     for svc in svcs:
         if not svc.get("enabled"):
             continue
         slug = slugify(svc["name"])
         url  = svc["url"].rstrip("/")
-        # Ces locations sont désormais exposées via Flask sous /proxy/<slug>/
-        # Elles sont conservées pour référence mais Flask gère le proxy directement
+        conf_path = os.path.join(NGINX_CONF_DIR, f"proxy_{slug}.conf")
+        with open(conf_path, "w") as f:
+            f.write(f"""# Proxy interne pour {svc['name']}
+location /proxy/{slug}/ {{
+    rewrite ^/proxy/{slug}/(.*)$ /$1 break;
+    proxy_pass {url}/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    proxy_buffering off;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+
+    # Réécrire les URLs absolues dans les réponses HTML/CSS/JS
+    sub_filter_once off;
+    sub_filter_types text/html text/css application/javascript;
+}}
+""")
 
 def generate_mtls_conf(svcs):
     os.makedirs(MTLS_CONF_DIR, exist_ok=True)
