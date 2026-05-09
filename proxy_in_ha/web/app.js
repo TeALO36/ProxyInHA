@@ -219,14 +219,14 @@
     dom.btnDlCa.addEventListener("click", () => downloadFile("/certs/download/ca", "proxyinha-ca.crt"));
 
     function openProxy(slug) {
-        // Construire le chemin propre vers le proxy en évitant le double slash
-        // L'URL ingress ressemble à: https://host:port/api/hassio_ingress/TOKEN/
-        // ou via reverse proxy: https://host:port/ADDON_SLUG/
-        const href = window.location.href;
-        // Trouver la base: tout ce qui est avant "proxy/" ou avant le dernier segment
-        // Utiliser l'API fetch relative pour résoudre correctement
-        const base = new URL('.', window.location.href).href;
-        const url = base.replace(/\/$/, '') + '/proxy/' + slug + '/';
+        // Garantir que la base URL préserve le chemin actuel (ex: /6dc47506_proxy_in_ha)
+        // même s'il n'y a pas de slash final.
+        let currentPath = window.location.pathname;
+        if (!currentPath.endsWith('/')) {
+            currentPath += '/';
+        }
+        const base = window.location.origin + currentPath;
+        const url = base + 'proxy/' + slug + '/';
         window.open(url, '_blank');
     }
 
