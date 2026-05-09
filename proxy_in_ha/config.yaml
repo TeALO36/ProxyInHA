@@ -36,7 +36,7 @@ schema:
       url: url
       icon: "str?"
       enabled: bool
-      public: bool
+      public: "bool?"
       public_port: "int?"
   check_interval: "int(5,300)"
   domain: str
