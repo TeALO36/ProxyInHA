@@ -6,7 +6,7 @@
 ###############################################################################
 
 bashio::log.info "============================================"
-bashio::log.info " ProxyInHA v1.3.1 — Auto TLS + mTLS"
+bashio::log.info " ProxyInHA v1.3.2 — Auto TLS + mTLS"
 bashio::log.info "============================================"
 
 # ── Chemins ─────────────────────────────────────────────────────────────────
@@ -31,8 +31,16 @@ bashio::log.info "Domaine      : ${DOMAIN:-'(non configuré)'}"
 sync_ha_options() {
     local ha_services existing_json count merged
 
-    # Lire les services depuis les options HA et compacter en JSON valide sur une ligne
-    ha_services=$(bashio::config 'services' 2>/dev/null | jq -c '.' 2>/dev/null || echo '[]')
+    # Lire les services depuis /data/options.json (toujours ecrit par HA avant restart)
+    # Fallback sur bashio::config si le fichier n'existe pas
+    local options_file="/data/options.json"
+    if [ -f "${options_file}" ]; then
+        ha_services=$(jq -c '.services // []' "${options_file}" 2>/dev/null || echo '[]')
+        bashio::log.info "Options lues depuis ${options_file}"
+    else
+        ha_services=$(bashio::config 'services' 2>/dev/null | jq -c '.' 2>/dev/null || echo '[]')
+        bashio::log.info "Options lues depuis bashio::config"
+    fi
 
     # Valider que c'est bien un tableau JSON
     if ! echo "${ha_services}" | jq -e 'type == "array"' >/dev/null 2>&1; then
