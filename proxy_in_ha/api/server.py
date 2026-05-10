@@ -80,14 +80,18 @@ location /proxy/{slug}/ {{
     proxy_redirect ~^/(.*)$ ./$1;
 
     # Reecrire les chemins absolus dans les reponses HTML et JS (SPAs)
+    # On utilise la variable NGINX $http_x_ingress_path pour generer des URLs absolues parfaites !
     sub_filter_types application/javascript text/css text/xml;
-    sub_filter 'src="/assets/'  'src="/proxy/{slug}/assets/';
-    sub_filter 'href="/assets/' 'href="/proxy/{slug}/assets/';
-    sub_filter 'src="/static/'  'src="/proxy/{slug}/static/';
-    sub_filter 'href="/static/' 'href="/proxy/{slug}/static/';
-    sub_filter 'src="/js/'      'src="/proxy/{slug}/js/';
-    sub_filter 'href="/css/'    'href="/proxy/{slug}/css/';
-    sub_filter '"/socket.io/'   '"/proxy/{slug}/socket.io/';
+    sub_filter 'src="/assets/'  'src="$http_x_ingress_path/proxy/{slug}/assets/';
+    sub_filter 'href="/assets/' 'href="$http_x_ingress_path/proxy/{slug}/assets/';
+    sub_filter 'src="/static/'  'src="$http_x_ingress_path/proxy/{slug}/static/';
+    sub_filter 'href="/static/' 'href="$http_x_ingress_path/proxy/{slug}/static/';
+    sub_filter 'src="/js/'      'src="$http_x_ingress_path/proxy/{slug}/js/';
+    sub_filter 'href="/css/'    'href="$http_x_ingress_path/proxy/{slug}/css/';
+    sub_filter '"/socket.io/'   '"$http_x_ingress_path/proxy/{slug}/socket.io/';
+    sub_filter 'href="/apple-touch-icon.png"' 'href="$http_x_ingress_path/proxy/{slug}/apple-touch-icon.png"';
+    sub_filter 'href="/icon.svg"' 'href="$http_x_ingress_path/proxy/{slug}/icon.svg"';
+    sub_filter 'href="/manifest.json"' 'href="$http_x_ingress_path/proxy/{slug}/manifest.json"';
     sub_filter_once off;
 }}
 
