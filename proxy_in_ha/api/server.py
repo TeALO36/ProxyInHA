@@ -75,14 +75,29 @@ location /proxy/{slug}/ {{
     proxy_read_timeout 86400s;
     proxy_send_timeout 86400s;
 
-    # Reecrire les chemins absolus dans les reponses HTML
+    # Reecrire les chemins absolus dans les reponses HTML et JS (SPAs)
+    sub_filter_types application/javascript text/css text/xml;
     sub_filter 'src="/assets/'  'src="/proxy/{slug}/assets/';
     sub_filter 'href="/assets/' 'href="/proxy/{slug}/assets/';
     sub_filter 'src="/static/'  'src="/proxy/{slug}/static/';
     sub_filter 'href="/static/' 'href="/proxy/{slug}/static/';
     sub_filter 'src="/js/'      'src="/proxy/{slug}/js/';
     sub_filter 'href="/css/'    'href="/proxy/{slug}/css/';
+    sub_filter '"/socket.io/'   '"/proxy/{slug}/socket.io/';
     sub_filter_once off;
+}}
+
+location /proxy/{slug}/socket.io/ {{
+    proxy_pass {url}/socket.io/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $proxy_host;
+    proxy_set_header Origin "{url}";
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
 }}
 
 
@@ -237,9 +252,6 @@ def regen_certs():
     shutil.copy(f"{d}/server.key", os.path.join(NGINX_CERTS, "server.key"))
     shutil.copy(f"{d}/ca.crt",    os.path.join(NGINX_CERTS, "ca.crt"))
     os.chmod(os.path.join(NGINX_CERTS, "server.key"), 0o600)
-    return True, "Certificats régénérés"
-
-# ── Routes statiques ──────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return send_from_directory("/var/www/html", "index.html")
@@ -253,6 +265,18 @@ def static_files(path):
         return send_from_directory("/var/www/html", path)
     except Exception:
         return send_from_directory("/var/www/html", "index.html")
+
+@app.route("/api/debug_fetch", methods=["POST"])
+def debug_fetch():
+    import urllib.request
+    url = request.json.get("url")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            body = r.read().decode("utf-8", errors="ignore")
+            return jsonify({"status": r.getcode(), "body": body[:1000]})
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 # ── Proxy interne vers les services ──────────────────────────────────────────
 @app.route("/proxy/<slug>/", defaults={"subpath": ""})
