@@ -75,6 +75,10 @@ location /proxy/{slug}/ {{
     proxy_read_timeout 86400s;
     proxy_send_timeout 86400s;
 
+    # Convertir les redirections absolues (Location: /dashboard) en relatives (Location: ./dashboard)
+    # pour preserver le token Ingress de Home Assistant
+    proxy_redirect ~^/(.*)$ ./$1;
+
     # Reecrire les chemins absolus dans les reponses HTML et JS (SPAs)
     sub_filter_types application/javascript text/css text/xml;
     sub_filter 'src="/assets/'  'src="/proxy/{slug}/assets/';
